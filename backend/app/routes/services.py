@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.service import Service
 from ..models.category import Category
-from ..schemas import ServiceResponse
+from ..schemas import ServiceCreate, ServiceResponse
+from ..security import verify_api_key
 
 router = APIRouter(
     prefix="/api/services",
@@ -27,6 +28,40 @@ def get_services(
         )
 
     return query.order_by(Service.id.desc()).all()
+
+
+@router.post(
+    "/",
+    response_model=ServiceResponse,
+    dependencies=[Depends(verify_api_key)]
+)
+def create_service(
+    data: ServiceCreate,
+    db: Session = Depends(get_db)
+):
+    category = db.query(Category).filter(
+        Category.id == data.category_id,
+        Category.is_active.is_(True)
+    ).first()
+
+    if category is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Category not found"
+        )
+
+    service = Service(
+        category_id=data.category_id,
+        name=data.name,
+        description=data.description,
+        price=data.price
+    )
+
+    db.add(service)
+    db.commit()
+    db.refresh(service)
+
+    return service
 
 
 @router.get("/{service_id}", response_model=ServiceResponse)
